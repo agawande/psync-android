@@ -23,7 +23,7 @@ public class FullProducer {
                         long syncInterestLifetimeMillis,
                         long syncReplyFreshnessMillis) {
         m_onReceivedSyncData = onSyncUpdate;
-        initializeFaceAndProcessEvents(homePath);
+        initialize(homePath);
         m_buffer = startFullProducer(ibfSize, syncPrefix, userPrefix,
                                      syncInterestLifetimeMillis, syncReplyFreshnessMillis);
     }
@@ -36,7 +36,7 @@ public class FullProducer {
         this(homePath, ibfSize , syncPrefix, userPrefix, onSyncUpdate, 1000, 1000);
     }
 
-    private native void initializeFaceAndProcessEvents(String homePath);
+    private native void initialize(String homePath);
 
     private native ByteBuffer startFullProducer(int ibfSize,
                                                 String syncPrefix,

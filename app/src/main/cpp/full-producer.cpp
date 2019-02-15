@@ -28,59 +28,90 @@
 #include <iostream>
 
 #include <android/log.h>
+#include <android/native_activity.h>
 
 #define  LOG_TAG    "testjni"
 #define  ALOG(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
 
-std::unique_ptr<ndn::Face> g_facePtr;
-static std::thread g_thread;
+static std::unique_ptr<ndn::Face> g_facePtr;
+static std::unique_ptr<std::thread> g_thread;
 
-class FullProducerWrapper
-{
+static JavaVM* g_jvm;
+static jobject g_thisObject;
+static jclass g_arrayList;
+static jclass g_missingDataInfoClass;
+static jmethodID g_addToArrayList;
+static jmethodID g_arrayListConstructor;
+static jmethodID g_onSyncUpdate;
+static jmethodID g_mdiConstructor;
+
+class FullProducerWrapper {
 public:
-  JavaVM* jvm;
-  jobject thisObject;
-  jclass arrayList;
-  jmethodID addToArrayList;
-  jmethodID arrayListConstructor;
-  jmethodID onSyncUpdate;
-  jclass missingDataInfoClass;
-  jmethodID mdiConstructor;
   std::unique_ptr<psync::FullProducer> fullProducer;
 };
 
-JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_FullProducer_initializeFaceAndProcessEvents
-        (JNIEnv *env, jobject, jstring homePath)
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_FullProducer_initialize
+        (JNIEnv *env, jobject thisObject, jstring homePath)
 {
   if (!g_facePtr) {
+    ALOG("%s", "Initialising face");
     ::setenv("HOME", env->GetStringUTFChars(homePath, 0), true);
     g_facePtr = std::make_unique<ndn::Face>("127.0.0.1");
-    g_thread = std::thread([]{ g_facePtr->processEvents(); });
   }
+
+  // Save reference to global JVM and thisObject
+  env->GetJavaVM(&g_jvm);
+  g_thisObject = env->NewGlobalRef(thisObject);
+
+  g_arrayList = reinterpret_cast<jclass>(env->NewGlobalRef(env->FindClass("java/util/ArrayList")));
+  g_addToArrayList = env->GetMethodID(g_arrayList, "add", "(Ljava/lang/Object;)Z");
+  g_arrayListConstructor = env->GetMethodID(g_arrayList, "<init>", "(I)V");
+
+  jclass fullProducerClass = env->FindClass("net/named_data/jni/psync/FullProducer");
+  if (fullProducerClass == 0) {
+    ALOG("%s", "Full Producer class not found");
+    return;
+  }
+  g_onSyncUpdate = env->GetMethodID(fullProducerClass, "onSyncUpdate", "(Ljava/util/ArrayList;)V");
+
+  g_missingDataInfoClass = reinterpret_cast<jclass>(env->NewGlobalRef(env->FindClass("net/named_data/jni/psync/MissingDataInfo")));
+
+  if (g_missingDataInfoClass == 0) {
+    ALOG("%s", "MissingDataInfo class not found");
+    return;
+  }
+
+  g_mdiConstructor = env->GetMethodID(g_missingDataInfoClass, "<init>", "(Ljava/lang/String;JJ)V");
 }
 
 void
-processSyncUpdate(const std::vector<psync::MissingDataInfo>& updates, FullProducerWrapper* fullProducerWrapper)
+processSyncUpdate(const std::vector<psync::MissingDataInfo>& updates)
 {
   JNIEnv *env;
-  fullProducerWrapper->jvm->AttachCurrentThread(&env, nullptr);
+  jint res = g_jvm->AttachCurrentThread(&env, nullptr);
 
-  jobject result = env->NewObject(fullProducerWrapper->arrayList, fullProducerWrapper->arrayListConstructor, updates.size());
+  if (JNI_OK != res) {
+    ALOG("%s", "Failed to AttachCurrentThread");
+    return;
+  }
+
+  jobject result = env->NewObject(g_arrayList, g_arrayListConstructor, updates.size());
 
   for (const auto& update : updates) {
     jstring jstr = env->NewStringUTF(update.prefix.toUri().c_str());
-    jobject mdiObj = env->NewObject(fullProducerWrapper->missingDataInfoClass, fullProducerWrapper->mdiConstructor,
+
+    jobject mdiObj = env->NewObject(g_missingDataInfoClass, g_mdiConstructor,
                                     jstr, update.lowSeq, update.highSeq);
 
-    env->CallVoidMethod(result, fullProducerWrapper->addToArrayList, mdiObj);
+    env->CallBooleanMethod(result, g_addToArrayList, mdiObj);
 
     env->DeleteLocalRef(jstr);
     env->DeleteLocalRef(mdiObj);
   }
 
-  env->CallVoidMethod(fullProducerWrapper->thisObject, fullProducerWrapper->onSyncUpdate, result);
+  env->CallVoidMethod(g_thisObject, g_onSyncUpdate, result);
   env->DeleteLocalRef(result);
-  fullProducerWrapper->jvm->DetachCurrentThread();
+  g_jvm->DetachCurrentThread();
 }
 
 JNIEXPORT
@@ -90,43 +121,31 @@ JNICALL Java_net_named_1data_jni_psync_FullProducer_startFullProducer(
   jstring userPrefix, jlong syncInterestLifetimeMillis, jlong syncReplyFreshnessMillis)
 {
   FullProducerWrapper* fullProducerWrapper = new FullProducerWrapper();
-  env->GetJavaVM(&fullProducerWrapper->jvm);
-
-  fullProducerWrapper->thisObject = env->NewGlobalRef(thisObject);
-  fullProducerWrapper->arrayList = env->FindClass("java/util/ArrayList");
-  fullProducerWrapper->addToArrayList = env->GetMethodID(fullProducerWrapper->arrayList, "add", "(Ljava/lang/Object;)Z");
-  fullProducerWrapper->arrayListConstructor = env->GetMethodID(fullProducerWrapper->arrayList, "<init>", "(I)V");
-
-  jclass fullProducerClass = env->FindClass("net/named_data/jni/psync/FullProducer");
-  if (fullProducerClass == 0) {
-    ALOG("%s", "Full Producer class not found");
-    return 0;
-  }
-
-  fullProducerWrapper->onSyncUpdate = env->GetMethodID(fullProducerClass, "onSyncUpdate", "(Ljava/util/ArrayList;)V");
-  fullProducerWrapper->missingDataInfoClass = env->FindClass("net/named_data/jni/psync/MissingDataInfo");
-
-  if (fullProducerWrapper->missingDataInfoClass == 0) {
-    ALOG("%s", "MissingDataInfo class not found");
-    return 0;
-  }
-
-  fullProducerWrapper->mdiConstructor = env->GetMethodID(fullProducerWrapper->missingDataInfoClass, "<init>", "(Ljava/lang/String;JJ)V");
-
   ndn::Name syncPrefixName(env->GetStringUTFChars(syncPrefix, nullptr));
   ndn::Name userPrefixName(env->GetStringUTFChars(userPrefix, nullptr));
 
   ALOG("%s", "Initializing PSync Full Producer");
-  fullProducerWrapper->fullProducer = std::make_unique<psync::FullProducer>((size_t)ibfSize, *g_facePtr,
-                                        syncPrefixName,
-                                        userPrefixName,
-                                        [fullProducerWrapper] (const std::vector<psync::MissingDataInfo>& updates)
-                                        {
-                                          processSyncUpdate(updates, fullProducerWrapper);
-                                        },
-                                        ndn::time::milliseconds(syncInterestLifetimeMillis),
-                                        ndn::time::milliseconds(syncReplyFreshnessMillis));
+  fullProducerWrapper->fullProducer = std::make_unique<psync::FullProducer>((size_t) ibfSize,
+                  *g_facePtr,
+                  syncPrefixName,
+                  userPrefixName,
+                  [](const std::vector<psync::MissingDataInfo> &updates) {
+                    processSyncUpdate(updates);
+                  },
+                  ndn::time::milliseconds(syncInterestLifetimeMillis),
+                  ndn::time::milliseconds(syncReplyFreshnessMillis));
 
+  if (!g_thread) {
+    g_thread = std::make_unique<std::thread>([] {
+        ALOG("%s", "Starting proces events thread");
+        try{
+          g_facePtr->processEvents();
+        }
+        catch (const std::exception& e) {
+          ALOG("%s", e.what());
+        }
+    });
+  }
   return env->NewDirectByteBuffer(fullProducerWrapper, 0);
 }
 
@@ -151,7 +170,6 @@ JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_FullProducer_removeUserNod
   FullProducerWrapper* fullProducerWrapper = (FullProducerWrapper*) env->GetDirectBufferAddress(handle);
   fullProducerWrapper->fullProducer->removeUserNode(ndn::Name(env->GetStringUTFChars(prefix, nullptr)));
 }
-
 
 JNIEXPORT jlong JNICALL Java_net_named_1data_jni_psync_FullProducer_getSeqNo
   (JNIEnv *env, jobject obj, jobject handle, jstring prefix)

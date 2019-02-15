@@ -9,7 +9,15 @@ import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
 
-    FullProducer fullProducer;
+    FullProducer fullProducer, fullProducer2;
+
+    FullProducer.OnSyncDataCallBack onSyncUpdate = new FullProducer.OnSyncDataCallBack() {
+        public void onSyncDataCallBack(ArrayList<MissingDataInfo> updates) {
+            for (MissingDataInfo update : updates) {
+                System.out.println(update.prefix + " " + update.lowSeq + " " + update.highSeq);
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -22,9 +30,9 @@ public class MainActivity extends AppCompatActivity {
         TextView tv = findViewById(R.id.sample_text);
         System.out.println(getFilesDir().getAbsolutePath());
 
-        fullProducer = new FullProducer(getFilesDir().getAbsolutePath(), 80, "/psync/sync", "/psync/user", null);
+        fullProducer = new FullProducer(getFilesDir().getAbsolutePath(), 80, "/psync/sync", "/andriod-1", onSyncUpdate);
 
-        // fullProducer2 = new FullProducer(getFilesDir().getAbsolutePath(), 80, "/2psync/sync", "/psync/user", null);
+        fullProducer2 = new FullProducer(getFilesDir().getAbsolutePath(), 80, "/psync/2sync", "/android-2", onSyncUpdate);
         //tv.setText(/*fullProducer.startFullProducer()*/);
     }
 }

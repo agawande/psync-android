@@ -9,10 +9,10 @@ extern "C" {
 #endif
 /*
  * Class:     net_named_data_jni_psync_FullProducer
- * Method:    initializeFaceAndProcessEvents
+ * Method:    initialize
  * Signature: (Ljava/lang/String;)V
  */
-JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_FullProducer_initializeFaceAndProcessEvents
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_FullProducer_initialize
   (JNIEnv *, jobject, jstring);
 
 /*
