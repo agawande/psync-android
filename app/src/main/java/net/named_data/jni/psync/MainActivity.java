@@ -9,9 +9,10 @@ import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
 
-    FullProducer fullProducer, fullProducer2;
+    PSync psync;
+    PSync.FullProducer fullProducer;
 
-    FullProducer.OnSyncDataCallBack onSyncUpdate = new FullProducer.OnSyncDataCallBack() {
+    PSync.OnSyncDataCallBack onSyncUpdate = new PSync.OnSyncDataCallBack() {
         public void onSyncDataCallBack(ArrayList<MissingDataInfo> updates) {
             for (MissingDataInfo update : updates) {
                 System.out.println(update.prefix + " " + update.lowSeq + " " + update.highSeq);
@@ -30,9 +31,19 @@ public class MainActivity extends AppCompatActivity {
         TextView tv = findViewById(R.id.sample_text);
         System.out.println(getFilesDir().getAbsolutePath());
 
-        fullProducer = new FullProducer(getFilesDir().getAbsolutePath(), 80, "/psync/sync", "/andriod-1", onSyncUpdate);
+        psync = PSync.getInstance(getFilesDir().getAbsolutePath());
+        fullProducer = new PSync.FullProducer(80, "/psync/sync", "/andriod-1", onSyncUpdate);
 
-        fullProducer2 = new FullProducer(getFilesDir().getAbsolutePath(), 80, "/psync/2sync", "/android-2", onSyncUpdate);
-        //tv.setText(/*fullProducer.startFullProducer()*/);
+        //PSync2 = new PSync(80, "/psync/2sync", "/android-2", onSyncUpdate);
+        //tv.setText(/*fullProducer.startFullProducer()*/
+
+        /*try {
+            Thread.sleep(10000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        fullProducer.cleanAndStop();
+        psync.cleanAndStop();*/
     }
 }

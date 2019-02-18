@@ -16,13 +16,15 @@
  * PSync, e.g., in COPYING.md file.  If not, see <http://www.gnu.org/licenses/>.
  **/
 
-#include "full-producer.hpp"
+#include "net_named_data_jni_psync_PSync.h"
+#include "net_named_data_jni_psync_PSync_FullProducer.h"
 
 #include <ndn-cxx/name.hpp>
 #include <ndn-cxx/face.hpp>
 #include <ndn-cxx/interest.hpp>
 
 #include <PSync/full-producer.hpp>
+#include <PSync/partial-producer.hpp>
 
 #include <thread>
 #include <iostream>
@@ -50,13 +52,31 @@ public:
   std::unique_ptr<psync::FullProducer> fullProducer;
 };
 
-JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_FullProducer_initialize
+class PartialProducerWrapper {
+public:
+    std::unique_ptr<psync::PartialProducer> partialProducer;
+};
+
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_initialize
         (JNIEnv *env, jobject thisObject, jstring homePath)
 {
   if (!g_facePtr) {
     ALOG("%s", "Initialising face");
     ::setenv("HOME", env->GetStringUTFChars(homePath, 0), true);
     g_facePtr = std::make_unique<ndn::Face>("127.0.0.1");
+  }
+
+  if (!g_thread) {
+    g_thread = std::make_unique<std::thread>([] {
+        ALOG("%s", "Starting proces events thread");
+        try {
+          // If keepThread is not passed as true, then PSync does not seem to set the interest filter in NFD
+          g_facePtr->processEvents(ndn::time::milliseconds::zero(), true);
+        }
+        catch (const std::exception &e) {
+          ALOG("%s", e.what());
+        }
+    });
   }
 
   // Save reference to global JVM and thisObject
@@ -67,7 +87,7 @@ JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_FullProducer_initialize
   g_addToArrayList = env->GetMethodID(g_arrayList, "add", "(Ljava/lang/Object;)Z");
   g_arrayListConstructor = env->GetMethodID(g_arrayList, "<init>", "(I)V");
 
-  jclass fullProducerClass = env->FindClass("net/named_data/jni/psync/FullProducer");
+  jclass fullProducerClass = env->FindClass("net/named_data/jni/psync/PSync$FullProducer");
   if (fullProducerClass == 0) {
     ALOG("%s", "Full Producer class not found");
     return;
@@ -82,6 +102,12 @@ JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_FullProducer_initialize
   }
 
   g_mdiConstructor = env->GetMethodID(g_missingDataInfoClass, "<init>", "(Ljava/lang/String;JJ)V");
+}
+
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_stop
+  (JNIEnv *, jobject)
+{
+  g_facePtr->shutdown();
 }
 
 void
@@ -116,7 +142,7 @@ processSyncUpdate(const std::vector<psync::MissingDataInfo>& updates)
 
 JNIEXPORT
 jobject
-JNICALL Java_net_named_1data_jni_psync_FullProducer_startFullProducer(
+JNICALL Java_net_named_1data_jni_psync_PSync_00024FullProducer_startFullProducer(
   JNIEnv *env, jobject thisObject, jint ibfSize, jstring syncPrefix,
   jstring userPrefix, jlong syncInterestLifetimeMillis, jlong syncReplyFreshnessMillis)
 {
@@ -135,50 +161,38 @@ JNICALL Java_net_named_1data_jni_psync_FullProducer_startFullProducer(
                   ndn::time::milliseconds(syncInterestLifetimeMillis),
                   ndn::time::milliseconds(syncReplyFreshnessMillis));
 
-  if (!g_thread) {
-    g_thread = std::make_unique<std::thread>([] {
-        ALOG("%s", "Starting proces events thread");
-        try{
-          g_facePtr->processEvents();
-        }
-        catch (const std::exception& e) {
-          ALOG("%s", e.what());
-        }
-    });
-  }
   return env->NewDirectByteBuffer(fullProducerWrapper, 0);
 }
 
-JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_FullProducer_stop
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_00024FullProducer_stop
   (JNIEnv *env, jobject obj, jobject handle)
 {
   FullProducerWrapper* fullProducerWrapper = (FullProducerWrapper*) env->GetDirectBufferAddress(handle);
   delete fullProducerWrapper;
-  // Destroy face.processEvent face here too? maybe take a true and false from the application to decide
 }
 
-JNIEXPORT jboolean JNICALL Java_net_named_1data_jni_psync_FullProducer_addUserNode
+JNIEXPORT jboolean JNICALL Java_net_named_1data_jni_psync_PSync_00024FullProducer_addUserNode
   (JNIEnv *env, jobject obj, jobject handle, jstring prefix)
 {
   FullProducerWrapper* fullProducerWrapper = (FullProducerWrapper*) env->GetDirectBufferAddress(handle);
   return fullProducerWrapper->fullProducer->addUserNode(ndn::Name(env->GetStringUTFChars(prefix, nullptr)));
 }
 
-JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_FullProducer_removeUserNode
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_00024FullProducer_removeUserNode
   (JNIEnv *env, jobject obj, jobject handle, jstring prefix)
 {
   FullProducerWrapper* fullProducerWrapper = (FullProducerWrapper*) env->GetDirectBufferAddress(handle);
   fullProducerWrapper->fullProducer->removeUserNode(ndn::Name(env->GetStringUTFChars(prefix, nullptr)));
 }
 
-JNIEXPORT jlong JNICALL Java_net_named_1data_jni_psync_FullProducer_getSeqNo
+JNIEXPORT jlong JNICALL Java_net_named_1data_jni_psync_PSync_00024FullProducer_getSeqNo
   (JNIEnv *env, jobject obj, jobject handle, jstring prefix)
 {
   FullProducerWrapper* fullProducerWrapper = (FullProducerWrapper*) env->GetDirectBufferAddress(handle);
   return fullProducerWrapper->fullProducer->getSeqNo(ndn::Name(env->GetStringUTFChars(prefix, nullptr))).value();
 }
 
-JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_FullProducer_publishName
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_00024FullProducer_publishName
   (JNIEnv *env, jobject obj, jobject handle, jstring prefix)
 {
   FullProducerWrapper* fullProducerWrapper = (FullProducerWrapper*) env->GetDirectBufferAddress(handle);
