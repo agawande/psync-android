@@ -18,6 +18,7 @@
 
 #include "net_named_data_jni_psync_PSync.h"
 #include "net_named_data_jni_psync_PSync_FullProducer.h"
+#include "net_named_data_jni_psync_PSync_Consumer.h"
 
 #include <ndn-cxx/name.hpp>
 #include <ndn-cxx/face.hpp>
@@ -25,6 +26,7 @@
 
 #include <PSync/full-producer.hpp>
 #include <PSync/partial-producer.hpp>
+#include <PSync/consumer.hpp>
 
 #include <thread>
 #include <iostream>
@@ -44,17 +46,14 @@ static jclass g_arrayList;
 static jclass g_missingDataInfoClass;
 static jmethodID g_addToArrayList;
 static jmethodID g_arrayListConstructor;
-static jmethodID g_onSyncUpdate;
+static jmethodID g_onFullProducerSyncUpdate;
+static jmethodID g_onHelloDataUpdate;
+static jmethodID g_onConsumerSyncUpdate;
 static jmethodID g_mdiConstructor;
 
 class FullProducerWrapper {
 public:
   std::unique_ptr<psync::FullProducer> fullProducer;
-};
-
-class PartialProducerWrapper {
-public:
-    std::unique_ptr<psync::PartialProducer> partialProducer;
 };
 
 JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_initialize
@@ -92,7 +91,7 @@ JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_initialize
     ALOG("%s", "Full Producer class not found");
     return;
   }
-  g_onSyncUpdate = env->GetMethodID(fullProducerClass, "onSyncUpdate", "(Ljava/util/ArrayList;)V");
+  g_onFullProducerSyncUpdate = env->GetMethodID(fullProducerClass, "onSyncUpdate", "(Ljava/util/ArrayList;)V");
 
   g_missingDataInfoClass = reinterpret_cast<jclass>(env->NewGlobalRef(env->FindClass("net/named_data/jni/psync/MissingDataInfo")));
 
@@ -102,6 +101,14 @@ JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_initialize
   }
 
   g_mdiConstructor = env->GetMethodID(g_missingDataInfoClass, "<init>", "(Ljava/lang/String;JJ)V");
+
+  jclass consumerClass = env->FindClass("net/named_data/jni/psync/PSync$Consumer");
+  if (consumerClass == 0) {
+    ALOG("%s", "Consumer class not found");
+    return;
+  }
+  g_onHelloDataUpdate = env->GetMethodID(consumerClass, "onHelloData", "(Ljava/util/ArrayList;)V");
+  g_onConsumerSyncUpdate = env->GetMethodID(consumerClass, "onSyncData", "(Ljava/util/ArrayList;)V");
 }
 
 JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_stop
@@ -111,7 +118,7 @@ JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_stop
 }
 
 void
-processSyncUpdate(const std::vector<psync::MissingDataInfo>& updates)
+processFullProducerSyncUpdate(const std::vector<psync::MissingDataInfo>& updates)
 {
   JNIEnv *env;
   jint res = g_jvm->AttachCurrentThread(&env, nullptr);
@@ -135,7 +142,7 @@ processSyncUpdate(const std::vector<psync::MissingDataInfo>& updates)
     env->DeleteLocalRef(mdiObj);
   }
 
-  env->CallVoidMethod(g_thisObject, g_onSyncUpdate, result);
+  env->CallVoidMethod(g_thisObject, g_onFullProducerSyncUpdate, result);
   env->DeleteLocalRef(result);
   g_jvm->DetachCurrentThread();
 }
@@ -156,7 +163,7 @@ JNICALL Java_net_named_1data_jni_psync_PSync_00024FullProducer_startFullProducer
                   syncPrefixName,
                   userPrefixName,
                   [](const std::vector<psync::MissingDataInfo> &updates) {
-                    processSyncUpdate(updates);
+                      processFullProducerSyncUpdate(updates);
                   },
                   ndn::time::milliseconds(syncInterestLifetimeMillis),
                   ndn::time::milliseconds(syncReplyFreshnessMillis));
@@ -197,4 +204,199 @@ JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_00024FullProducer_pu
 {
   FullProducerWrapper* fullProducerWrapper = (FullProducerWrapper*) env->GetDirectBufferAddress(handle);
   fullProducerWrapper->fullProducer->publishName(ndn::Name(env->GetStringUTFChars(prefix, nullptr)));
+}
+
+// ---------------------------------PartialProducer-start-------------------------------------------
+
+class PartialProducerWrapper {
+public:
+    std::unique_ptr<psync::PartialProducer> partialProducer;
+};
+
+JNIEXPORT jobject JNICALL Java_net_named_1data_jni_psync_PSync_00024PartialProducer_startPartialProducer
+  (JNIEnv *env, jobject, jint ibfSize, jstring syncPrefix, jstring userPrefix, jlong helloReplyFreshness, jlong syncReplyFreshness)
+{
+  PartialProducerWrapper *partialProducerWrapper = new PartialProducerWrapper();
+
+  ndn::Name syncPrefixName(env->GetStringUTFChars(syncPrefix, nullptr));
+  ndn::Name userPrefixName(env->GetStringUTFChars(userPrefix, nullptr));
+
+  partialProducerWrapper->partialProducer = std::make_unique<psync::PartialProducer>((size_t) ibfSize,
+                                              *g_facePtr,
+                                              syncPrefixName,
+                                              userPrefixName,
+                                              ndn::time::milliseconds(helloReplyFreshness),
+                                              ndn::time::milliseconds(syncReplyFreshness));
+
+  return env->NewDirectByteBuffer(partialProducerWrapper, 0);
+}
+
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_00024PartialProducer_stop
+  (JNIEnv *env, jobject, jobject handle)
+{
+  PartialProducerWrapper* partialProducerWrapper = (PartialProducerWrapper*) env->GetDirectBufferAddress(handle);
+  delete partialProducerWrapper;
+}
+
+JNIEXPORT jboolean JNICALL Java_net_named_1data_jni_psync_PSync_00024PartialProducer_addUserNode
+  (JNIEnv *env, jobject, jobject handle, jstring prefix)
+{
+  PartialProducerWrapper* partialProducerWrapper = (PartialProducerWrapper*) env->GetDirectBufferAddress(handle);
+  return partialProducerWrapper->partialProducer->addUserNode(ndn::Name(env->GetStringUTFChars(prefix, nullptr)));
+}
+
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_00024PartialProducer_removeUserNode
+  (JNIEnv *env, jobject, jobject handle, jstring prefix)
+{
+  PartialProducerWrapper* partialProducerWrapper = (PartialProducerWrapper*) env->GetDirectBufferAddress(handle);
+  partialProducerWrapper->partialProducer->removeUserNode(ndn::Name(env->GetStringUTFChars(prefix, nullptr)));
+}
+
+JNIEXPORT jlong JNICALL Java_net_named_1data_jni_psync_PSync_00024PartialProducer_getSeqNo
+  (JNIEnv *env, jobject, jobject handle, jstring prefix)
+{
+  PartialProducerWrapper* partialProducerWrapper = (PartialProducerWrapper*) env->GetDirectBufferAddress(handle);
+  return partialProducerWrapper->partialProducer->getSeqNo(ndn::Name(env->GetStringUTFChars(prefix, nullptr))).value();
+}
+
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_00024PartialProducer_publishName
+  (JNIEnv *env, jobject, jobject handle, jstring prefix)
+{
+  PartialProducerWrapper* partialProducerWrapper = (PartialProducerWrapper*) env->GetDirectBufferAddress(handle);
+  partialProducerWrapper->partialProducer->publishName(ndn::Name(env->GetStringUTFChars(prefix, nullptr)));
+}
+
+// ---------------------------------Consumer-start-------------------------------------------
+class ConsumerWrapper {
+public:
+    std::unique_ptr<psync::Consumer> consumer;
+};
+
+void
+processHelloDataUpdate(const std::vector<ndn::Name>& names)
+{
+  JNIEnv *env;
+  jint res = g_jvm->AttachCurrentThread(&env, nullptr);
+
+  if (JNI_OK != res) {
+    ALOG("%s", "Failed to AttachCurrentThread");
+    return;
+  }
+
+  jobject result = env->NewObject(g_arrayList, g_arrayListConstructor, names.size());
+
+  for (const auto& name : names) {
+    jstring jstr = env->NewStringUTF(name.toUri().c_str());
+
+    env->CallBooleanMethod(result, g_addToArrayList, jstr);
+
+    env->DeleteLocalRef(jstr);
+  }
+
+  env->CallVoidMethod(g_thisObject, g_onHelloDataUpdate, result);
+  env->DeleteLocalRef(result);
+  g_jvm->DetachCurrentThread();
+}
+
+void
+processConsumerSyncUpdate(const std::vector<psync::MissingDataInfo>& updates)
+{
+  JNIEnv *env;
+  jint res = g_jvm->AttachCurrentThread(&env, nullptr);
+
+  if (JNI_OK != res) {
+    ALOG("%s", "Failed to AttachCurrentThread");
+    return;
+  }
+
+  jobject result = env->NewObject(g_arrayList, g_arrayListConstructor, updates.size());
+
+  for (const auto& update : updates) {
+    jstring jstr = env->NewStringUTF(update.prefix.toUri().c_str());
+
+    jobject mdiObj = env->NewObject(g_missingDataInfoClass, g_mdiConstructor,
+                                    jstr, update.lowSeq, update.highSeq);
+
+    env->CallBooleanMethod(result, g_addToArrayList, mdiObj);
+
+    env->DeleteLocalRef(jstr);
+    env->DeleteLocalRef(mdiObj);
+  }
+
+  env->CallVoidMethod(g_thisObject, g_onConsumerSyncUpdate, result);
+  env->DeleteLocalRef(result);
+  g_jvm->DetachCurrentThread();
+}
+
+JNIEXPORT jobject JNICALL Java_net_named_1data_jni_psync_PSync_00024Consumer_initializeConsumer
+  (JNIEnv *env, jobject, jstring syncPrefix, jint count, jdouble falsePositive,
+    jlong helloInterestLifetimeMillis, jlong syncInterestLifetimeMillis)
+{
+  ConsumerWrapper* consumerWrapper = new ConsumerWrapper();
+  ndn::Name syncPrefixName(env->GetStringUTFChars(syncPrefix, nullptr));
+  consumerWrapper->consumer = std::make_unique<psync::Consumer>(syncPrefixName, *g_facePtr,
+    [](const std::vector<ndn::Name>& updates) {
+      processHelloDataUpdate(updates);
+    },
+    [](const std::vector<psync::MissingDataInfo>& updates) {
+      processConsumerSyncUpdate(updates);
+    },
+    count,
+    falsePositive,
+    ndn::time::milliseconds(helloInterestLifetimeMillis),
+    ndn::time::milliseconds(syncInterestLifetimeMillis));
+
+  return env->NewDirectByteBuffer(consumerWrapper, 0);
+}
+
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_00024Consumer_sendHelloInterest
+  (JNIEnv *env, jobject, jobject handle)
+{
+  ConsumerWrapper* consumerWrapper = (ConsumerWrapper*) env->GetDirectBufferAddress(handle);
+  consumerWrapper->consumer->sendHelloInterest();
+}
+
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_00024Consumer_sendSyncInterest
+  (JNIEnv *env, jobject, jobject handle)
+{
+  ConsumerWrapper* consumerWrapper = (ConsumerWrapper*) env->GetDirectBufferAddress(handle);
+  consumerWrapper->consumer->sendSyncInterest();
+}
+
+JNIEXPORT jboolean JNICALL Java_net_named_1data_jni_psync_PSync_00024Consumer_addSubscription
+  (JNIEnv *env, jobject, jobject handle, jstring prefix)
+{
+  ConsumerWrapper* consumerWrapper = (ConsumerWrapper*) env->GetDirectBufferAddress(handle);
+  return consumerWrapper->consumer->addSubscription(ndn::Name(env->GetStringUTFChars(prefix, nullptr)));
+}
+
+JNIEXPORT jobject JNICALL Java_net_named_1data_jni_psync_PSync_00024Consumer_getSubscriptionList
+  (JNIEnv *env, jobject, jobject handle)
+{
+  ConsumerWrapper* consumerWrapper = (ConsumerWrapper*) env->GetDirectBufferAddress(handle);
+  const std::set<ndn::Name>& subscriptions = consumerWrapper->consumer->getSubscriptionList();
+
+  jobject result = env->NewObject(g_arrayList, g_arrayListConstructor, subscriptions.size());
+  for (const auto& sub : subscriptions) {
+    jstring jstr = env->NewStringUTF(sub.toUri().c_str());
+
+    env->CallBooleanMethod(result, g_addToArrayList, jstr);
+
+    env->DeleteLocalRef(jstr);
+  }
+  return result;
+}
+
+JNIEXPORT jboolean JNICALL Java_net_named_1data_jni_psync_PSync_00024Consumer_isSubscribed
+  (JNIEnv *env, jobject, jobject handle, jstring prefix)
+{
+  ConsumerWrapper* consumerWrapper = (ConsumerWrapper*) env->GetDirectBufferAddress(handle);
+  return consumerWrapper->consumer->isSubscribed(ndn::Name(env->GetStringUTFChars(prefix, nullptr)));
+}
+
+JNIEXPORT jlong JNICALL Java_net_named_1data_jni_psync_PSync_00024Consumer_getSeqNo
+  (JNIEnv *env, jobject, jobject handle, jstring prefix)
+{
+  ConsumerWrapper* consumerWrapper = (ConsumerWrapper*) env->GetDirectBufferAddress(handle);
+  return consumerWrapper->consumer->getSeqNo(ndn::Name(env->GetStringUTFChars(prefix, nullptr))).value();
 }

@@ -14,6 +14,10 @@ public class PSync {
         void onSyncDataCallBack(ArrayList<MissingDataInfo> updates);
     }
 
+    public interface OnHelloDataCallBack {
+        void onHelloDataCallBack(ArrayList<String> names);
+    }
+
     // Singleton pattern
     private PSync(String homePath) {
         initialize(homePath);
@@ -105,11 +109,117 @@ public class PSync {
         public PartialProducer(int ibfSize,
                             String syncPrefix,
                             String userPrefix,
-                            OnSyncDataCallBack onSyncUpdate,
-                            long syncInterestLifetimeMillis,
+                            long helloReplyFreshnessMillis,
                             long syncReplyFreshnessMillis) {
-           // m_buffer = startFullProducer(ibfSize, syncPrefix, userPrefix,
-            //        syncInterestLifetimeMillis, syncReplyFreshnessMillis);
+           m_buffer = startPartialProducer(ibfSize, syncPrefix, userPrefix,
+                                           helloReplyFreshnessMillis, syncReplyFreshnessMillis);
+        }
+
+        private native ByteBuffer startPartialProducer(int ibfSize,
+                                                       String syncPrefix,
+                                                       String userPrefix,
+                                                       long helloReplyFreshness,
+                                                       long syncReplyFreshness);
+
+        public void addUserNode(String prefix) {
+            addUserNode(m_buffer, prefix);
+        }
+
+        public void removeUserNode(String prefix) {
+            removeUserNode(m_buffer, prefix);
+        }
+
+        public void getSeqNo(String prefix) {
+            getSeqNo(m_buffer, prefix);
+        }
+
+        public void publishName(String prefix) {
+            publishName(m_buffer, prefix);
+        }
+
+        private native void stop(ByteBuffer buffer);
+
+        private native boolean addUserNode(ByteBuffer buffer, String prefix);
+
+        private native void removeUserNode(ByteBuffer buffer, String prefix);
+
+        private native long getSeqNo(ByteBuffer buffer, String prefix);
+
+        private native void publishName(ByteBuffer buffer, String prefix);
+    }
+
+    public static class Consumer {
+        private OnHelloDataCallBack m_onHelloDataCallback;
+        private OnSyncDataCallBack m_onSyncDataCallBack;
+        private ByteBuffer m_buffer;
+
+        public Consumer(String syncPrefix,
+                        OnHelloDataCallBack helloDataCallBack,
+                        OnSyncDataCallBack syncDataCallBack,
+                        int count,
+                        double falsePositive,
+                        long helloInterestLifetimeMillis,
+                        long syncInterestLifetimeMillis)
+        {
+            m_onHelloDataCallback = helloDataCallBack;
+            m_onSyncDataCallBack = syncDataCallBack;
+        }
+
+        public Consumer(String syncPrefix,
+                        OnHelloDataCallBack helloDataCallBack,
+                        OnSyncDataCallBack syncDataCallBack,
+                        int count,
+                        double falsePositive)
+        {
+            this(syncPrefix, helloDataCallBack, syncDataCallBack, count, falsePositive, 1000, 1000);
+        }
+
+        public void sendHelloInterest() {
+            sendHelloInterest(m_buffer);
+        }
+
+        public void sendSyncInterest() {
+            sendSyncInterest(m_buffer);
+        }
+
+        public boolean addSubscription(String prefix) {
+            return addSubscription(m_buffer, prefix);
+        }
+
+        public ArrayList<String> getSubscriptionList() {
+            return getSubscriptionList(m_buffer);
+        }
+
+        public boolean isSubscribed(String prefix) {
+            return isSubscribed(m_buffer, prefix);
+        }
+
+        public long getSeqNo(String prefix) {
+            return getSeqNo(m_buffer, prefix);
+        }
+
+        private native ByteBuffer initializeConsumer(String syncPrefix, int count, double falsePositive, long helloInterestLifetimeMillis, long syncInterestLifetimeMillis);
+
+        private native void sendHelloInterest(ByteBuffer buffer);
+
+        private native void sendSyncInterest(ByteBuffer buffer);
+
+        private native boolean addSubscription(ByteBuffer buffer, String prefix);
+
+        private native ArrayList<String> getSubscriptionList(ByteBuffer buffer);
+
+        private native boolean isSubscribed(ByteBuffer buffer, String prefix);
+
+        private native long getSeqNo(ByteBuffer buffer, String prefix);
+
+        // private native void stop(ByteBuffer);
+
+        private void onSyncUpdate(ArrayList<MissingDataInfo> updates) {
+            m_onSyncDataCallBack.onSyncDataCallBack(updates);
+        }
+
+        private void onHelloData(ArrayList<String> names) {
+            m_onHelloDataCallback.onHelloDataCallBack(names);
         }
     }
 }
