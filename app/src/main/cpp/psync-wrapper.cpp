@@ -41,7 +41,8 @@ static std::unique_ptr<ndn::Face> g_facePtr;
 static std::unique_ptr<std::thread> g_thread;
 
 static JavaVM* g_jvm;
-static jobject g_thisObject;
+static jobject g_fullProducerObject = nullptr;
+static jobject g_consumerObject = nullptr;
 static jclass g_arrayList;
 static jclass g_missingDataInfoClass;
 static jmethodID g_addToArrayList;
@@ -78,9 +79,8 @@ JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_initialize
     });
   }
 
-  // Save reference to global JVM and thisObject
+  // Save reference to global JVM
   env->GetJavaVM(&g_jvm);
-  g_thisObject = env->NewGlobalRef(thisObject);
 
   g_arrayList = reinterpret_cast<jclass>(env->NewGlobalRef(env->FindClass("java/util/ArrayList")));
   g_addToArrayList = env->GetMethodID(g_arrayList, "add", "(Ljava/lang/Object;)Z");
@@ -142,7 +142,7 @@ processFullProducerSyncUpdate(const std::vector<psync::MissingDataInfo>& updates
     env->DeleteLocalRef(mdiObj);
   }
 
-  env->CallVoidMethod(g_thisObject, g_onFullProducerSyncUpdate, result);
+  env->CallVoidMethod(g_fullProducerObject, g_onFullProducerSyncUpdate, result);
   env->DeleteLocalRef(result);
   g_jvm->DetachCurrentThread();
 }
@@ -153,6 +153,9 @@ JNICALL Java_net_named_1data_jni_psync_PSync_00024FullProducer_startFullProducer
   JNIEnv *env, jobject thisObject, jint ibfSize, jstring syncPrefix,
   jstring userPrefix, jlong syncInterestLifetimeMillis, jlong syncReplyFreshnessMillis)
 {
+  if (g_fullProducerObject == nullptr) {
+    g_fullProducerObject = env->NewGlobalRef(thisObject);
+  }
   FullProducerWrapper* fullProducerWrapper = new FullProducerWrapper();
   ndn::Name syncPrefixName(env->GetStringUTFChars(syncPrefix, nullptr));
   ndn::Name userPrefixName(env->GetStringUTFChars(userPrefix, nullptr));
@@ -214,7 +217,7 @@ public:
 };
 
 JNIEXPORT jobject JNICALL Java_net_named_1data_jni_psync_PSync_00024PartialProducer_startPartialProducer
-  (JNIEnv *env, jobject, jint ibfSize, jstring syncPrefix, jstring userPrefix, jlong helloReplyFreshness, jlong syncReplyFreshness)
+  (JNIEnv *env, jobject thisObject, jint ibfSize, jstring syncPrefix, jstring userPrefix, jlong helloReplyFreshness, jlong syncReplyFreshness)
 {
   PartialProducerWrapper *partialProducerWrapper = new PartialProducerWrapper();
 
@@ -293,7 +296,7 @@ processHelloDataUpdate(const std::vector<ndn::Name>& names)
     env->DeleteLocalRef(jstr);
   }
 
-  env->CallVoidMethod(g_thisObject, g_onHelloDataUpdate, result);
+  env->CallVoidMethod(g_consumerObject, g_onHelloDataUpdate, result);
   env->DeleteLocalRef(result);
   g_jvm->DetachCurrentThread();
 }
@@ -323,15 +326,19 @@ processConsumerSyncUpdate(const std::vector<psync::MissingDataInfo>& updates)
     env->DeleteLocalRef(mdiObj);
   }
 
-  env->CallVoidMethod(g_thisObject, g_onConsumerSyncUpdate, result);
+  env->CallVoidMethod(g_consumerObject, g_onConsumerSyncUpdate, result);
   env->DeleteLocalRef(result);
   g_jvm->DetachCurrentThread();
 }
 
 JNIEXPORT jobject JNICALL Java_net_named_1data_jni_psync_PSync_00024Consumer_initializeConsumer
-  (JNIEnv *env, jobject, jstring syncPrefix, jint count, jdouble falsePositive,
+  (JNIEnv *env, jobject thisObject, jstring syncPrefix, jint count, jdouble falsePositive,
     jlong helloInterestLifetimeMillis, jlong syncInterestLifetimeMillis)
 {
+  if (g_consumerObject == nullptr) {
+    g_consumerObject = env->NewGlobalRef(thisObject);
+  }
+  g_consumerObject = env->NewGlobalRef(thisObject);
   ConsumerWrapper* consumerWrapper = new ConsumerWrapper();
   ndn::Name syncPrefixName(env->GetStringUTFChars(syncPrefix, nullptr));
   consumerWrapper->consumer = std::make_unique<psync::Consumer>(syncPrefixName, *g_facePtr,

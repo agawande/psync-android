@@ -163,6 +163,8 @@ public class PSync {
         {
             m_onHelloDataCallback = helloDataCallBack;
             m_onSyncDataCallBack = syncDataCallBack;
+            m_buffer = initializeConsumer(syncPrefix, count, falsePositive,
+                                          helloInterestLifetimeMillis, syncInterestLifetimeMillis);
         }
 
         public Consumer(String syncPrefix,
@@ -214,11 +216,11 @@ public class PSync {
 
         // private native void stop(ByteBuffer);
 
-        private void onSyncUpdate(ArrayList<MissingDataInfo> updates) {
+        private void onSyncData(ArrayList<MissingDataInfo> updates) {
             m_onSyncDataCallBack.onSyncDataCallBack(updates);
         }
 
-        private void onHelloData(ArrayList<String> names) {
+        public void onHelloData(ArrayList<String> names) {
             m_onHelloDataCallback.onHelloDataCallBack(names);
         }
     }
