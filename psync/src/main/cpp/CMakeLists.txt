@@ -15,7 +15,7 @@ set(NDN_CXX_VERSION 0.6.5)
 set(NDN_CXX_LIBS ${ANDROID_NDK}/packages/ndn_cxx/${NDN_CXX_VERSION}/libs/${ANDROID_ABI}/llvm)
 set(NDN_CXX_INCLUDE ${ANDROID_NDK}/packages/ndn_cxx/${NDN_CXX_VERSION}/include)
 
-set(PSYNC_VERSION 0.1.0-da27849)
+set(PSYNC_VERSION 0.1.0)
 set(PSYNC_LIBS ${ANDROID_NDK}/packages/psync/${PSYNC_VERSION}/libs/${ANDROID_ABI}/llvm)
 set(PSYNC_INCLUDE ${ANDROID_NDK}/packages/psync/${PSYNC_VERSION}/include)
 

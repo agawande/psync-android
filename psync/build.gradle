@@ -1,9 +1,8 @@
-apply plugin: 'com.android.application'
+apply plugin: 'com.android.library'
 
 android {
     compileSdkVersion 28
     defaultConfig {
-        applicationId "net.named_data.jni.psync"
         minSdkVersion 23
         targetSdkVersion 26
         versionCode 1
