@@ -19,6 +19,7 @@
 #include "net_named_data_jni_psync_PSync.h"
 #include "net_named_data_jni_psync_PSync_FullProducer.h"
 #include "net_named_data_jni_psync_PSync_Consumer.h"
+#include "net_named_data_jni_psync_PSync_PartialProducer.h"
 
 #include <ndn-cxx/name.hpp>
 #include <ndn-cxx/face.hpp>
