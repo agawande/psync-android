@@ -1,1 +1,1 @@
-include ':psync'
+include ':psync', ':application'
