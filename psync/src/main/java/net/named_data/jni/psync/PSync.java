@@ -15,7 +15,7 @@ public class PSync {
     }
 
     public interface OnHelloDataCallBack {
-        void onHelloDataCallBack(ArrayList<String> names);
+        void onHelloDataCallBack(ArrayList<String> names, Consumer consumer);
     }
 
     // Singleton pattern
@@ -184,9 +184,7 @@ public class PSync {
             sendSyncInterest(m_buffer);
         }
 
-        public boolean addSubscription(String prefix) {
-            return addSubscription(m_buffer, prefix);
-        }
+        public boolean addSubscription(String prefix) { return addSubscription(m_buffer, prefix); }
 
         public ArrayList<String> getSubscriptionList() {
             return getSubscriptionList(m_buffer);
@@ -221,7 +219,7 @@ public class PSync {
         }
 
         public void onHelloData(ArrayList<String> names) {
-            m_onHelloDataCallback.onHelloDataCallBack(names);
+            m_onHelloDataCallback.onHelloDataCallBack(names, this);
         }
     }
 }
