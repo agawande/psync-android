@@ -2,9 +2,9 @@
 
 ## Build instructions
 
-- Install NFD-android by following the instructions [here](https://github.com/named-data-mobile/NFD-android#prerequisites). (Specify --no-check-shasum if problem with shasum of ndn-cxx)
+- Install NFD-android by following the instructions [here](https://github.com/named-data-mobile/NFD-android#prerequisites). (Specify --no-check-shasum if problem with shasum of ndn-cxx) but use the crew repository below and build ndn-cxx, NFD from source (as PSync version needs to be updated to master in named-data-mobile/android-crew-staging for it compile).
 
-- Build PSync library, by going to crew.dir created in above step (only works with ndn-cxx 0.6.5 and not 0.6.6 - need to update psync version in crew to master):
+- Build PSync library, by going to crew.dir created in above step:
 
    ```
    CREW_OWNER=named-data-mobile crew.dir/crew install target/psync
