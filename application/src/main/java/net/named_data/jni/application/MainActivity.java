@@ -12,10 +12,11 @@ public class MainActivity extends AppCompatActivity {
 
     PSync psync;
     PSync.Consumer consumer;
+    PSync.FullProducer producer;
 
     PSync.OnHelloDataCallBack helloDataCallBack = new PSync.OnHelloDataCallBack() {
         @Override
-        public void onHelloDataCallBack(ArrayList<String> names) {
+        public void onHelloDataCallBack(ArrayList<String> names, PSync.Consumer consumer) {
             for (String name : names) {
                 consumer.addSubscription(name);
             }
@@ -40,7 +41,9 @@ public class MainActivity extends AppCompatActivity {
 
         psync = PSync.getInstance(getFilesDir().getAbsolutePath());
         // Instantiate Consumer
-        consumer = new PSync.Consumer("/sync/partial", helloDataCallBack, syncDataCallBack, 40, 0.001);
-        consumer.sendHelloInterest();
+        //consumer = new PSync.Consumer("/sync/partial", helloDataCallBack, syncDataCallBack, 40, 0.001);
+        //consumer.sendHelloInterest();
+
+        producer = new PSync.FullProducer(40, "/sync/test", "user1", null);
     }
 }
