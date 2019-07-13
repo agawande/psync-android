@@ -378,6 +378,14 @@ JNIEXPORT jboolean JNICALL Java_net_named_1data_jni_psync_PSync_00024Consumer_ad
   return consumerWrapper->consumer->addSubscription(ndn::Name(env->GetStringUTFChars(prefix, nullptr)));
 }
 
+JNIEXPORT void JNICALL Java_net_named_1data_jni_psync_PSync_00024Consumer_stop
+  (JNIEnv *env, jobject, jobject handle)
+{
+    ConsumerWrapper* consumerWrapper = (ConsumerWrapper*) env->GetDirectBufferAddress(handle);
+    consumerWrapper->consumer->stop();
+    delete consumerWrapper;
+}
+
 JNIEXPORT jobject JNICALL Java_net_named_1data_jni_psync_PSync_00024Consumer_getSubscriptionList
   (JNIEnv *env, jobject, jobject handle)
 {
